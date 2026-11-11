@@ -1,3 +1,4 @@
+
 package com.example.bank_transfer_app.controller;
 
 import java.math.BigDecimal;
@@ -8,15 +9,15 @@ import com.example.bank_transfer_app.model.TransactionStatus;
 import com.example.bank_transfer_app.repository.BankTransactionRepository;
 import com.example.bank_transfer_app.repository.CustomerRepository;
 import com.example.bank_transfer_app.service.BankService;
-import com.example.bank_transfer_app.service.TransactionAuditService;
 
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.validation.BindingResult;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 @Controller
@@ -24,18 +25,20 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class BankController {
 
     private final BankService bankService;
-    private final TransactionAuditService auditService;
+
     private final CustomerRepository customerRepository;
+
     private final BankTransactionRepository transactionRepository;
 
-    // Dashboard data
-    private void populateDashboard(Model model) {
+    // Display dashboard
+    @GetMapping({"", "/"})
+    public String dashboard(Model model) {
 
         model.addAttribute("customers",
-                customerRepository.findAllOrdered());
+                customerRepository.findAll());
 
         model.addAttribute("allCustomers",
-                customerRepository.findAllOrdered());
+                customerRepository.findAll());
 
         model.addAttribute("transferRequest",
                 new TransferRequest());
@@ -53,244 +56,78 @@ public class BankController {
                 customerRepository.getTotalBalance());
 
         model.addAttribute("successCount",
-                transactionRepository.countByStatus(TransactionStatus.SUCCESS));
+                transactionRepository.countByStatus(
+                        TransactionStatus.SUCCESS));
 
         model.addAttribute("failedCount",
-                transactionRepository.countByStatus(TransactionStatus.FAILED));
-    }
-
-    // Dashboard
-    @GetMapping({"", "/"})
-    public String dashboard(
-            @RequestParam(required = false) String keyword,
-            Model model) {
-
-        populateDashboard(model);
-
-        if (keyword != null && !keyword.trim().isEmpty()) {
-
-            model.addAttribute("customers",
-                    customerRepository.searchByName(keyword.trim()));
-
-            model.addAttribute("keyword", keyword.trim());
-        }
+                transactionRepository.countByStatus(
+                        TransactionStatus.FAILED));
 
         return "bank";
     }
 
-    @GetMapping("/bank")
-    public String bankAlias() {
-        return "redirect:/";
-    }
-
-    // Add customer
+    // Create a new customer
     @PostMapping("/customers")
-    public String addCustomer(
-            @Valid @ModelAttribute("customer") Customer customer,
-            BindingResult result,
-            RedirectAttributes redirectAttributes,
-            Model model) {
-
-        if (result.hasErrors()) {
-
-            populateDashboard(model);
-
-            model.addAttribute("customer", customer);
-
-            return "bank";
-        }
+    public String createCustomer(
+            @ModelAttribute Customer customer,
+            RedirectAttributes redirectAttributes) {
 
         try {
-
             bankService.createCustomer(customer);
 
             redirectAttributes.addFlashAttribute(
-                    "success", "Customer saved successfully!");
+                    "success",
+                    "Customer created successfully!");
 
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
 
             redirectAttributes.addFlashAttribute(
-                    "error", messageFor(e));
+                    "error",
+                    e.getMessage());
         }
 
         return "redirect:/";
     }
 
-    // Transfer money
+    // Transfer money between accounts
     @PostMapping("/transfer")
     public String transfer(
-            @Valid @ModelAttribute("transferRequest") TransferRequest transferRequest,
-            BindingResult result,
-            RedirectAttributes redirectAttributes,
-            Model model) {
-
-        if (result.hasErrors()) {
-
-            populateDashboard(model);
-
-            model.addAttribute("transferRequest", transferRequest);
-
-            return "bank";
-        }
+            @ModelAttribute TransferRequest request,
+            RedirectAttributes redirectAttributes) {
 
         try {
-
             bankService.transfer(
-                    transferRequest.getFromAccount(),
-                    transferRequest.getToAccount(),
-                    transferRequest.getAmount(),
-                    transferRequest.isSimulateFailure()
+                    request.getFromAccount(),
+                    request.getToAccount(),
+                    request.getAmount(),
+                    request.isSimulateFailure()
             );
 
             redirectAttributes.addFlashAttribute(
-                    "success", "Transfer completed successfully!");
+                    "success",
+                    "Transfer completed successfully!");
 
-        } catch (RuntimeException e) {
-
-            // Record failure separately after the transfer transaction rolls back
-            auditService.recordFailure(
-                    transferRequest.getFromAccount(),
-                    transferRequest.getToAccount(),
-                    transferRequest.getAmount(),
-                    messageFor(e)
-            );
+        } catch (Exception e) {
 
             redirectAttributes.addFlashAttribute(
-                    "error", "Transfer failed: " + messageFor(e));
+                    "error",
+                    e.getMessage());
         }
 
         return "redirect:/";
     }
 
-    // Deposit form
-    @GetMapping("/deposit")
-    public String showDepositForm(Model model) {
-
-        model.addAttribute("customers",
-                customerRepository.findAllOrdered());
-
-        return "deposit";
-    }
-
-    // Deposit money
-    @PostMapping("/deposit")
-    public String deposit(
-            @RequestParam String accountNumber,
-            @RequestParam BigDecimal amount,
-            RedirectAttributes redirectAttributes) {
-
-        try {
-
-            bankService.deposit(accountNumber, amount);
-
-            redirectAttributes.addFlashAttribute(
-                    "success",
-                    "Successfully deposited LKR " + amount
-                            + " to account " + accountNumber);
-
-        } catch (RuntimeException e) {
-
-            redirectAttributes.addFlashAttribute(
-                    "error", messageFor(e));
-        }
-
-        return "redirect:/deposit";
-    }
-
-    // Withdrawal form
-    @GetMapping("/withdraw")
-    public String showWithdrawForm(Model model) {
-
-        model.addAttribute("customers",
-                customerRepository.findAllOrdered());
-
-        return "withdraw";
-    }
-
-    // Withdraw money
-    @PostMapping("/withdraw")
-    public String withdraw(
-            @RequestParam String accountNumber,
-            @RequestParam BigDecimal amount,
-            RedirectAttributes redirectAttributes) {
-
-        try {
-
-            bankService.withdraw(accountNumber, amount);
-
-            redirectAttributes.addFlashAttribute(
-                    "success",
-                    "Successfully withdrew LKR " + amount
-                            + " from account " + accountNumber);
-
-        } catch (RuntimeException e) {
-
-            auditService.recordFailure(
-                    accountNumber,
-                    null,
-                    amount,
-                    messageFor(e)
-            );
-
-            redirectAttributes.addFlashAttribute(
-                    "error", messageFor(e));
-        }
-
-        return "redirect:/withdraw";
-    }
-
-    // Account transaction history
-    @GetMapping("/accounts/{no}/history")
+    // View account transaction history
+    @GetMapping("/accounts/{accountNumber}/history")
     public String accountHistory(
-            @PathVariable("no") String accountNumber,
-            Model model,
-            RedirectAttributes redirectAttributes) {
+            @PathVariable String accountNumber,
+            Model model) {
 
-        Customer customer = customerRepository
-                .getByAccountNumber(accountNumber)
-                .orElse(null);
-
-        if (customer == null) {
-            redirectAttributes.addFlashAttribute(
-                    "error", "Account " + accountNumber + " was not found");
-            return "redirect:/";
-        }
-
-        model.addAttribute("customer", customer);
+        model.addAttribute("accountNumber", accountNumber);
 
         model.addAttribute("transactions",
                 transactionRepository.findHistory(accountNumber));
 
-        model.addAttribute("totalSent",
-                transactionRepository.getTotalSentByAccount(
-                        accountNumber, TransactionStatus.SUCCESS));
-
         return "history";
-    }
-
-    // Large transfers
-    @GetMapping("/large-transfers")
-    public String largeTransfers(
-            @RequestParam(defaultValue = "10000.00") BigDecimal min,
-            Model model) {
-
-        BigDecimal minimum = min == null ? new BigDecimal("10000.00") : min;
-        if (minimum.signum() < 0) {
-            minimum = BigDecimal.ZERO;
-        }
-
-        model.addAttribute("min", minimum);
-
-        model.addAttribute("transfers",
-                        transactionRepository.findLargeTransfers(
-                                minimum, TransactionStatus.SUCCESS));
-
-        return "large-transfers";
-    }
-
-    private String messageFor(RuntimeException exception) {
-        return exception.getMessage() == null
-                ? "An unexpected error occurred"
-                : exception.getMessage();
     }
 }
