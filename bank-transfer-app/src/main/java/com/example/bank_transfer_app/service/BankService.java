@@ -3,6 +3,7 @@ package com.example.bank_transfer_app.service;
 
 import java.math.BigDecimal;
 
+import org.springframework.transaction.annotation.Propagation;
 import com.example.bank_transfer_app.exception.AccountNotFoundException;
 import com.example.bank_transfer_app.exception.BankException;
 import com.example.bank_transfer_app.exception.InsufficientBalanceException;
@@ -29,7 +30,8 @@ public class BankService {
     private final TransactionAuditService auditService;
 
     // Transfer money between accounts
-    @Transactional(rollbackFor = Exception.class)
+    //@Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.SUPPORTS)
     public BankTransaction transfer(
             String fromAccount,
             String toAccount,
