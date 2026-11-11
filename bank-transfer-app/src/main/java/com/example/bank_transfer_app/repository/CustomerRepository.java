@@ -1,3 +1,4 @@
+
 package com.example.bank_transfer_app.repository;
 
 import java.math.BigDecimal;
@@ -9,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.bank_transfer_app.model.Customer;
 
@@ -63,6 +65,7 @@ public interface CustomerRepository
     long countCustomersNative();
 
     // Debit money from an account
+    @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Customer c
@@ -75,6 +78,7 @@ public interface CustomerRepository
             @Param("amount") BigDecimal amount);
 
     // Credit money to an account
+    @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Customer c

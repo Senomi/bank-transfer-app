@@ -30,8 +30,10 @@ public class BankService {
     private final TransactionAuditService auditService;
 
     // Transfer money between accounts
-    //@Transactional(rollbackFor = Exception.class)
-    @Transactional(propagation = Propagation.SUPPORTS)
+
+    // TASK 10: Experiment without an outer transaction
+    @Transactional(rollbackFor = Exception.class)
+    //@Transactional(propagation = Propagation.SUPPORTS)
     public BankTransaction transfer(
             String fromAccount,
             String toAccount,
@@ -106,7 +108,7 @@ public class BankService {
                     e.getMessage()
             );
 
-            // Re-throw exception to trigger rollback
+            // Re-throw exception
             throw e;
         }
     }
