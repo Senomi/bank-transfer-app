@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.bank_transfer_app.model.Customer;
@@ -64,8 +65,12 @@ public interface CustomerRepository
     @Query(value = "SELECT COUNT(*) FROM customers", nativeQuery = true)
     long countCustomersNative();
 
-    // Debit money from an account
-    @Transactional
+    // ==========================================
+    // DEBIT MONEY
+    // Must participate in an existing transaction
+    // ==========================================
+
+    @Transactional(propagation = Propagation.MANDATORY)
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Customer c
@@ -77,8 +82,12 @@ public interface CustomerRepository
             @Param("accountNumber") String accountNumber,
             @Param("amount") BigDecimal amount);
 
-    // Credit money to an account
-    @Transactional
+    // ==========================================
+    // CREDIT MONEY
+    // Must participate in an existing transaction
+    // ==========================================
+
+    @Transactional(propagation = Propagation.MANDATORY)
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Customer c

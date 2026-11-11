@@ -2,8 +2,8 @@
 package com.example.bank_transfer_app.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
-import org.springframework.transaction.annotation.Propagation;
 import com.example.bank_transfer_app.exception.AccountNotFoundException;
 import com.example.bank_transfer_app.exception.BankException;
 import com.example.bank_transfer_app.exception.InsufficientBalanceException;
@@ -24,16 +24,21 @@ import org.springframework.transaction.annotation.Transactional;
 public class BankService {
 
     private final CustomerRepository customerRepository;
-
     private final BankTransactionRepository transactionRepository;
-
     private final TransactionAuditService auditService;
 
-    // Transfer money between accounts
+    // Bank fee account
+    private static final String BANK_FEE_ACCOUNT = "999999";
 
-    // TASK 10: Experiment without an outer transaction
+    // Transfer fee rate: 1%
+    private static final BigDecimal TRANSFER_FEE_RATE =
+            new BigDecimal("0.01");
+
+    // ==========================================
+    // TRANSFER MONEY WITH 1% BANK FEE
+    // ==========================================
+
     @Transactional(rollbackFor = Exception.class)
-    //@Transactional(propagation = Propagation.SUPPORTS)
     public BankTransaction transfer(
             String fromAccount,
             String toAccount,
@@ -46,12 +51,22 @@ public class BankService {
 
             if (fromAccount == null || toAccount == null
                     || fromAccount.isBlank() || toAccount.isBlank()) {
-                throw new BankException("Account numbers are required");
+
+                throw new BankException(
+                        "Account numbers are required");
             }
 
             if (fromAccount.equals(toAccount)) {
+
                 throw new BankException(
                         "Sender and receiver accounts must be different");
+            }
+
+            if (fromAccount.equals(BANK_FEE_ACCOUNT)
+                    || toAccount.equals(BANK_FEE_ACCOUNT)) {
+
+                throw new BankException(
+                        "Bank Fees account cannot be used for normal transfers");
             }
 
             // Check sender account
@@ -64,36 +79,86 @@ public class BankService {
                     .orElseThrow(() ->
                             new AccountNotFoundException(toAccount));
 
-            // 1. Debit transfer amount from sender
+            // Check bank fee account
+            customerRepository.getByAccountNumber(BANK_FEE_ACCOUNT)
+                    .orElseThrow(() ->
+                            new AccountNotFoundException(BANK_FEE_ACCOUNT));
+
+            // ======================================
+            // CALCULATE 1% TRANSFER FEE
+            // ======================================
+
+            BigDecimal fee = amount
+                    .multiply(TRANSFER_FEE_RATE)
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal totalDebit = amount.add(fee);
+
+            // ======================================
+            // UPDATE 1: DEBIT SENDER
+            // ======================================
+
             int debited = customerRepository.debit(
-                    fromAccount, amount);
+                    fromAccount,
+                    totalDebit
+            );
 
             if (debited == 0) {
+
                 throw new InsufficientBalanceException(fromAccount);
             }
 
-            // 2. Simulate failure for rollback testing
-            if (simulateFailure) {
-                throw new RuntimeException(
-                        "Simulated system failure after the withdrawal!");
-            }
+            // ======================================
+            // UPDATE 2: CREDIT RECEIVER
+            // ======================================
 
-            // 3. Credit transfer amount to receiver
             int receiverCredited = customerRepository.credit(
-                    toAccount, amount);
+                    toAccount,
+                    amount
+            );
 
             if (receiverCredited == 0) {
+
                 throw new BankException(
                         "Receiver account could not be credited");
             }
 
-            // 4. Save successful transaction
+            // ======================================
+            // UPDATE 3: CREDIT BANK FEES ACCOUNT
+            // ======================================
+
+            int feeCredited = customerRepository.credit(
+                    BANK_FEE_ACCOUNT,
+                    fee
+            );
+
+            if (feeCredited == 0) {
+
+                throw new BankException(
+                        "Bank transfer fee could not be credited");
+            }
+
+            // ======================================
+            // SIMULATE FAILURE FOR ROLLBACK TEST
+            // ======================================
+
+            if (simulateFailure) {
+
+                throw new RuntimeException(
+                        "Simulated system failure after all balance updates!");
+            }
+
+            // ======================================
+            // SAVE SUCCESSFUL TRANSACTION
+            // ======================================
+
             BankTransaction transaction = new BankTransaction(
                     amount,
                     fromAccount,
                     toAccount,
                     TransactionStatus.SUCCESS,
                     "Transfer of LKR " + amount
+                            + " | Bank fee (1%): LKR " + fee
             );
 
             return transactionRepository.save(transaction);
@@ -108,12 +173,15 @@ public class BankService {
                     e.getMessage()
             );
 
-            // Re-throw exception
+            // Rethrow exception to trigger rollback
             throw e;
         }
     }
 
-    // Create new customer
+    // ==========================================
+    // CREATE CUSTOMER
+    // ==========================================
+
     @Transactional(rollbackFor = Exception.class)
     public Customer createCustomer(Customer customer) {
 
@@ -137,7 +205,75 @@ public class BankService {
         return customerRepository.save(customer);
     }
 
-    // Validate transaction amount
+    // ==========================================
+    // DEPOSIT MONEY
+    // ==========================================
+
+    @Transactional(rollbackFor = Exception.class)
+    public void deposit(String accountNumber, BigDecimal amount) {
+
+        validateAmount(amount);
+
+        customerRepository.getByAccountNumber(accountNumber)
+                .orElseThrow(() ->
+                        new AccountNotFoundException(accountNumber));
+
+        int credited = customerRepository.credit(
+                accountNumber, amount);
+
+        if (credited == 0) {
+
+            throw new BankException(
+                    "Deposit could not be completed");
+        }
+
+        BankTransaction transaction = new BankTransaction(
+                amount,
+                "EXTERNAL",
+                accountNumber,
+                TransactionStatus.SUCCESS,
+                "Deposit of LKR " + amount
+        );
+
+        transactionRepository.save(transaction);
+    }
+
+    // ==========================================
+    // WITHDRAW MONEY
+    // ==========================================
+
+    @Transactional(rollbackFor = Exception.class)
+    public void withdraw(String accountNumber, BigDecimal amount) {
+
+        validateAmount(amount);
+
+        customerRepository.getByAccountNumber(accountNumber)
+                .orElseThrow(() ->
+                        new AccountNotFoundException(accountNumber));
+
+        int debited = customerRepository.debit(
+                accountNumber, amount);
+
+        if (debited == 0) {
+
+            throw new InsufficientBalanceException(accountNumber);
+        }
+
+        BankTransaction transaction = new BankTransaction(
+                amount,
+                accountNumber,
+                "EXTERNAL",
+                TransactionStatus.SUCCESS,
+                "Withdrawal of LKR " + amount
+        );
+
+        transactionRepository.save(transaction);
+    }
+
+    // ==========================================
+    // VALIDATE AMOUNT
+    // ==========================================
+
     private void validateAmount(BigDecimal amount) {
 
         if (amount == null || amount.signum() <= 0) {

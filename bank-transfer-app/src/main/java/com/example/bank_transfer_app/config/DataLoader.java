@@ -1,3 +1,4 @@
+
 package com.example.bank_transfer_app.config;
 
 import java.math.BigDecimal;
@@ -19,27 +20,33 @@ public class DataLoader implements CommandLineRunner {
     @Override
     public void run(String... args) {
 
+        // Create initial customers if database is empty
         if (customerRepository.count() == 0) {
-
-            // Initial customers (Total balance: LKR 85,000.00)
 
             customerRepository.save(
                     new Customer("100001", "Kamal Perera",
-                            "kamal@mail.com", new BigDecimal("50000.00")));
+                            "kamal@mail.com",
+                            new BigDecimal("50000.00")));
 
             customerRepository.save(
                     new Customer("100002", "Nimali Silva",
-                            "nimali@mail.com", new BigDecimal("25000.00")));
+                            "nimali@mail.com",
+                            new BigDecimal("25000.00")));
 
             customerRepository.save(
                     new Customer("100003", "Saman Kumara",
-                            "saman@mail.com", new BigDecimal("10000.00")));
+                            "saman@mail.com",
+                            new BigDecimal("10000.00")));
+        }
 
-            // Bank fee collection account
+        // Ensure Bank Fees account exists
+        if (customerRepository
+                .getByAccountNumber("999999").isEmpty()) {
 
             customerRepository.save(
                     new Customer("999999", "Bank Fees",
-                            "bank@system.local", new BigDecimal("0.00")));
+                            "bank@system.local",
+                            new BigDecimal("0.00")));
         }
     }
 }
